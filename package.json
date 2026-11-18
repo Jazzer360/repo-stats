@@ -1,0 +1,1 @@
+{"name":"repo-stats","private":true,"type":"module","scripts":{"test":"node --test test/*.test.mjs","analyze":"node cli/analyze.mjs","serve":"python3 -m http.server 8000 -d site"}}

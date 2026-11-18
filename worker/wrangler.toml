@@ -1,0 +1,8 @@
+name = "repo-stats-auth"
+main = "oauth-exchange.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Replace with the GitHub Pages origin (no trailing slash, no path).
+ALLOWED_ORIGIN = "https://YOUR-ACCOUNT.github.io"
+# GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are set with `wrangler secret put`.
