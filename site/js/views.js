@@ -261,7 +261,7 @@ export function repoOverlay(app, fullName) {
       ${r.topics?.length ? `<p>${r.topics.map(t => `<span class="topic">${esc(t)}</span>`).join('')}</p>` : ''}
       </div>
       <div class="ov-actions">
-        ${app.loggedIn && app.dataset?.startsWith('gh:') ? `<button class="btn" data-action="reanalyze" data-repo="${attr(r.fullName)}">Re-analyze</button>` : ''}
+        ${app.server && app.dataset === 'local' && (r.url || r.localPath) ? `<button class="btn" data-action="reanalyze" data-repo="${attr(r.fullName)}">Re-analyze</button>` : ''}
         <button class="btn" data-action="compare-add" data-repo="${attr(r.fullName)}">Compare</button>
         <button class="close" data-action="close-overlay" aria-label="Close">×</button>
       </div></header>`;
@@ -270,7 +270,6 @@ export function repoOverlay(app, fullName) {
   const code = s.byCat.code;
   const h = r.history;
   let html = head;
-  if (r.truncated) html += `<div class="note warn">GitHub returned a truncated file tree (over 100,000 entries or 7 MB). Statistics cover only the files returned. The command-line analyzer has no such limit.</div>`;
   html += `<div class="tiles">
     ${tile('Lines of code', fmtN(code.code), `${fmtN(code.files)} files · avg ${fmtN(s.avgFileLines)} lines`)}
     ${tile('Comments', fmtPct(s.commentRatio), `${fmtN(code.comment)} lines`)}
@@ -313,7 +312,7 @@ export function repoOverlay(app, fullName) {
     }
     if (h.contributors?.length) {
       const tot = h.contributors.reduce((a, c) => a + c.commits, 0);
-      html += card('Contributors', `<table class="tbl compact"><thead><tr><th>Who</th><th class="num">Commits</th><th class="num">Share</th><th class="num">Added</th><th class="num">Removed</th></tr></thead><tbody>${h.contributors.slice(0, 15).map(c => `<tr class="${h.mine && c.login === h.mine.login ? 'me' : ''}"><td>${c.avatar ? `<img class="av" src="${attr(c.avatar)}&s=40" alt="" width="20" height="20">` : ''}${esc(c.login)}</td><td class="num">${fmtN(c.commits)}</td><td class="num">${fmtPct(c.commits / tot)}</td><td class="num">${fmtN(c.additions)}</td><td class="num">${fmtN(c.deletions)}</td></tr>`).join('')}</tbody></table>${h.contributors.length > 15 ? `<p class="muted small">and ${h.contributors.length - 15} more</p>` : ''}`, { sub: h.source === 'api' ? 'From GitHub’s contributor statistics (top 100; line counts are zero for repos with 10,000+ commits).' : 'From git log on the default branch.' });
+      html += card('Contributors', `<table class="tbl compact"><thead><tr><th>Who</th><th class="num">Commits</th><th class="num">Share</th><th class="num">Added</th><th class="num">Removed</th></tr></thead><tbody>${h.contributors.slice(0, 15).map(c => `<tr class="${h.mine && c.login === h.mine.login ? 'me' : ''}"><td>${c.avatar ? `<img class="av" src="${attr(c.avatar)}&s=40" alt="" width="20" height="20">` : ''}${esc(c.login)}</td><td class="num">${fmtN(c.commits)}</td><td class="num">${fmtPct(c.commits / tot)}</td><td class="num">${fmtN(c.additions)}</td><td class="num">${fmtN(c.deletions)}</td></tr>`).join('')}</tbody></table>${h.contributors.length > 15 ? `<p class="muted small">and ${h.contributors.length - 15} more</p>` : ''}`, { sub: 'From git log on the default branch, by author name (no merges).' });
     }
     html += `</div>`;
   }
@@ -582,7 +581,7 @@ export function activity(app) {
     const recent = fillWeeks(weekly).filter(w => w[0] * 1000 > now - 365 * 864e5);
     html += card('Commits per week, last 12 months', columns(recent.map(w => ({ label: '', value: w[3], tip: `<b>Week of ${new Date(w[0] * 1000).toLocaleDateString()}</b><br>${fmtN(w[3])} commits` })), { height: 150 }), { sub: 'Default branches of the filtered repositories.' });
     html += `</div>`;
-    html += card('Lines added and removed per week', diverging(fillWeeks(weekly).slice(-156)), { sub: 'Last three years. Includes all file types (GitHub’s statistics don’t separate generated files).' });
+    html += card('Lines added and removed per week', diverging(fillWeeks(weekly).slice(-156)), { sub: 'Last three years, all file types (git’s line counts include generated files and lockfiles).' });
     // monthly activity per repo heat table
     const months = [];
     const d0 = new Date(); d0.setUTCDate(1);
@@ -594,6 +593,22 @@ export function activity(app) {
     }).filter(([, c]) => c.some(Boolean)).sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0)).slice(0, 25);
     const maxC = Math.max(1, ...repoMonths.flatMap(([, c]) => c));
     html += card('Most active repositories, by month', repoMonths.length ? `<div class="table-wrap"><table class="tbl compact heat"><thead><tr><th>Repository</th>${months.map(m => `<th>${m.toLocaleDateString(undefined, { month: 'short' })}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>${repoMonths.map(([r, c]) => `<tr><td><a href="${repoHref(r)}">${esc(r.name)}</a></td>${c.map((v, i) => `<td class="hm" style="--a:${v ? 0.15 + 0.85 * Math.sqrt(v / maxC) : 0}" data-tip="${attr(`<b>${esc(r.name)}</b><br>${months[i].toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}: ${fmtN(v)} commits`)}">${v || ''}</td>`).join('')}<td class="num">${fmtN(c.reduce((a, b) => a + b, 0))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-note">No commits in the last 12 months</div>', { sub: 'Commits on the default branch in each of the last 12 months.' });
+    // when you code (punch card)
+    const pm = repos.reduce((acc, r) => { const p = r.history?.punchMine; if (p) p.forEach((row, d) => row.forEach((v, h) => { acc[d][h] += v; })); return acc; }, Array.from({ length: 7 }, () => Array(24).fill(0)));
+    const pa = repos.reduce((acc, r) => { const p = r.history?.punch; if (p) p.forEach((row, d) => row.forEach((v, h) => { acc[d][h] += v; })); return acc; }, Array.from({ length: 7 }, () => Array(24).fill(0)));
+    const useMine = pm.flat().some(Boolean);
+    const P = useMine ? pm : pa;
+    if (P.flat().some(Boolean)) {
+      const maxP = Math.max(...P.flat());
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const tot = P.flat().reduce((a, b) => a + b, 0);
+      const byDay = P.map(r => r.reduce((a, b) => a + b, 0));
+      const byHour = Array.from({ length: 24 }, (_, h) => P.reduce((a, r) => a + r[h], 0));
+      const peakH = byHour.indexOf(Math.max(...byHour)), peakD = byDay.indexOf(Math.max(...byDay));
+      const weekend = (byDay[0] + byDay[6]) / tot, night = byHour.reduce((a, v, h) => a + (h >= 22 || h < 6 ? v : 0), 0) / tot;
+      html += card(useMine ? 'When you commit' : 'When commits happen', `<div class="table-wrap"><table class="tbl compact heat punch"><thead><tr><th></th>${Array.from({ length: 24 }, (_, h) => `<th>${h % 3 === 0 ? h : ''}</th>`).join('')}</tr></thead><tbody>${P.map((row, d) => `<tr><td>${days[d]}</td>${row.map((v, h) => `<td class="hm" style="--a:${v ? 0.12 + 0.88 * (v / maxP) : 0}" data-tip="${attr(`<b>${days[d]} ${h}:00–${h + 1}:00</b><br>${fmtN(v)} commits`)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <p class="small muted">Busiest: ${days[peakD]}s, around ${peakH}:00. ${fmtPct(weekend)} on weekends, ${fmtPct(night)} between 10pm and 6am. Times are in this computer’s time zone.</p>`, { sub: useMine ? 'Your commits on the default branches, by weekday and hour.' : 'All authors (your commits weren’t recognised; see Methodology).' });
+    }
     // my share
     const mine = repos.filter(r => r.history?.contributors?.length).map(r => ({ r, mine: r.history.mine?.commits || 0, total: r.history.contributors.reduce((a, c) => a + c.commits, 0) })).filter(x => x.total).sort((a, b) => b.mine - a.mine).slice(0, 20);
     if (mine.some(x => x.mine)) html += card('Your share of commits', hbars(mine.map(x => ({ label: x.r.name, sub: x.r.owner, value: x.total, href: repoHref(x.r), segs: [{ label: 'You', value: x.mine, color: 'var(--s1)', tip: `<b>${esc(x.r.name)}</b><br>You: ${fmtN(x.mine)} commits (${fmtPct(x.mine / x.total)})` }, { label: 'Others', value: x.total - x.mine, color: 'var(--other)', tip: `<b>${esc(x.r.name)}</b><br>Others: ${fmtN(x.total - x.mine)} commits` }] })), { labelWidth: 170 }) + `<div class="legend"><span class="lg"><i style="background:var(--s1)"></i>You</span><span class="lg"><i style="background:var(--other)"></i>Everyone else</span></div>`);
@@ -668,12 +683,13 @@ export function methodology() {
   <h3>Limits</h3>
   <ul>
     <li>Text files over 1 MB aren’t read. Over-1 MB “code” is treated as generated (it’s almost always a bundle or amalgamation); other large files as data.</li>
-    <li>GitHub truncates file trees over 100,000 entries; such repos are flagged “partial”. The command-line analyzer has no limit.</li>
-    <li>Commit history comes from GitHub’s contributor statistics: top 100 contributors, weekly granularity, and no line counts for repos over 10,000 commits. Additions and deletions include generated files.</li>
+    <li>Commit history covers the default branch only, excludes merge commits, and its added/removed line counts include generated files.</li>
     <li>Submodules and symlinks aren’t followed. Git LFS pointer files are counted as small text files.</li>
     <li>Language detection is by file name, extension and shebang. MATLAB vs Objective-C <code>.m</code> files are distinguished by content.</li>
   </ul>
+  <h3>Your commits</h3>
+  <p>A commit is yours if its author email is your git <code>user.email</code>, one of your GitHub account emails, or your GitHub noreply address, or if the author name matches your GitHub login or name. Emails are only compared, never stored.</p>
   <h3>Privacy</h3>
-  <p>Processing runs in your browser and talks only to GitHub (sign-in also makes one call to the token-exchange worker, which trades the one-time login code for a token and stores nothing). Results are cached in this browser’s IndexedDB, and the sign-in token is kept in session storage (gone when the tab closes). Author email addresses are never recorded. Nothing is sent anywhere else unless you export it.</p>
+  <p>Everything runs on this computer. The local server lists repositories through the GitHub CLI, clones them with git (authenticating through the CLI, so this app never handles a token), and writes results to <code>report.json</code> in its data folder. Author emails are never recorded. Nothing is sent anywhere unless you export it.</p>
   </div>`;
 }

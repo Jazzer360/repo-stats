@@ -311,3 +311,10 @@ nav a.active { color: var(--ink); background: var(--surface-2); }
 }
 @media (forced-colors: active) { .seg, .hb-bar, .col-bar, .mini span { forced-color-adjust: none; } }
 .view-files .table-wrap, .view-repos .table-wrap { max-height: 78vh; }
+
+.user-chip { display: flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 500; }
+.user-chip img { border-radius: 50%; }
+.user-chip:hover { text-decoration: none; }
+.pick { max-height: 420px; overflow: auto; margin: 8px 0; }
+.punch td.hm { min-width: 18px; height: 20px; padding: 0; }
+.punch th { font-weight: 500; font-size: 11px; padding: 2px; text-align: center; }
